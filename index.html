@@ -27,7 +27,27 @@ function allFrames(){return [{id:'builtin',name:'별빛 네컷',src:builtinSvg()
 function currentFrame(){return allFrames().find(f=>f.id===selected)||allFrames()[0]}
 function renderGallery(){const g=document.querySelector('#gallery');g.replaceChildren();for(const f of allFrames()){const b=document.createElement('button');b.type='button';b.className='tile'+(selected===f.id?' active':'');b.setAttribute('aria-pressed',selected===f.id?'true':'false');const img=document.createElement('img');img.src=f.src;img.alt='';const label=document.createElement('span');label.textContent=f.name;const badge=document.createElement('small');badge.className='badge';badge.textContent=f.kind==='shared'?'반 공용':f.kind==='local'?'내 기기':'기본';label.append(' ',badge);b.append(img,label);b.onclick=()=>{selected=f.id;document.querySelector('#selectedName').textContent=f.name;renderGallery()};g.append(b)}}
 function update(){document.querySelector('#counter').textContent=`사진 ${shots.length} / 4`;document.querySelector('#snap').disabled=!camera||shots.length>=4;document.querySelector('#finish').disabled=shots.length!==4;document.querySelector('#placeholder').hidden=!!camera;const switchButton=document.querySelector('#switchCamera');switchButton.disabled=!camera;switchButton.textContent=cameraFacing==='user'?'후면 카메라로 전환':'전면 카메라로 전환';video.dataset.facing=cameraFacing}
-async function loadShared(){try{const response=await fetch(manifestUrl,{cache:'no-store'});if(!response.ok)throw Error('manifest');const data=await response.json();sharedFrames=(data.frames||[]).flatMap((f,i)=>{const reference=f.src||f.url||f.file||f.path;if(!reference)return[];const rooted=/^(https?:|data:|blob:|\/|frames\/)/i.test(reference);const src=rooted?new URL(reference,location.href).href:new URL(reference,new URL('./frames/',location.href)).href;return[{id:'shared-'+i+'-'+reference,name:f.name||f.title||reference.split('/').pop(),src}]});renderGallery()}catch{if(!sharedFrames.length)say('공용 프레임을 불러오지 못했어요. 페이지를 새로고침하거나 교사에게 알려 주세요.')}}
+async function loadShared(){
+try{
+const response=await fetch(manifestUrl,{cache:'no-store'});
+if(!response.ok)throw Error('manifest');
+const data=await response.json();
+sharedFrames=(data.frames||[]).flatMap((f,i)=>{
+const reference=f.src||f.url||f.file||f.path;
+if(!reference)return[];
+const rooted=reference.startsWith('http://')||reference.startsWith('https://')||reference.startsWith('data:')||reference.startsWith('blob:')||reference.startsWith('/')||reference.startsWith('frames/');
+const src=rooted?new URL(reference,location.href).href:new URL(reference,new URL('./frames/',location.href)).href;
+return[{id:'shared-'+i+'-'+reference,name:f.name||f.title||reference.split('/').pop(),src}]
+});
+if(!sharedFrames.length){
+const listing=await fetch('https://api.github.com/repos/barbalala012-dev/Life4Cuts/contents/frames?ref=main',{headers:{Accept:'application/vnd.github+json'},cache:'force-cache'});
+if(listing.ok){
+const files=await listing.json();
+sharedFrames=files.filter(item=>item.type==='file'&&item.name.toLowerCase().endsWith('.png')).map(item=>({id:'repo-'+item.path,name:item.name.slice(0,-4),src:new URL(item.path,location.href).href}))
+}
+}
+renderGallery()
+}catch{if(!sharedFrames.length)say('공용 프레임을 불러오지 못했어요. 페이지를 새로고침하거나 교사에게 알려 주세요.')}}
 async function openCamera(facing){const previous=camera;if(previous)previous.getTracks().forEach(track=>track.stop());camera=null;update();const dimensions={width:{ideal:1280},height:{ideal:960}};let next;try{next=await navigator.mediaDevices.getUserMedia({video:{...dimensions,facingMode:{exact:facing}},audio:false})}catch(error){if(error?.name!=='OverconstrainedError'&&error?.name!=='ConstraintNotSatisfiedError')throw error;next=await navigator.mediaDevices.getUserMedia({video:{...dimensions,facingMode:{ideal:facing}},audio:false})}camera=next;cameraFacing=facing;video.setAttribute('playsinline','');video.setAttribute('webkit-playsinline','');video.playsInline=true;video.muted=true;video.srcObject=next;await video.play();update()}
 document.querySelector('#start').onclick=async()=>{try{if(!window.isSecureContext){say('카메라는 HTTPS 주소에서만 사용할 수 있어요. Safari에서 공개 사이트 주소를 열어 주세요.');return}if(!navigator.mediaDevices?.getUserMedia){say('Safari에서 사이트를 직접 열어 주세요. 앱 안에 내장된 브라우저에서는 카메라가 제한될 수 있어요.');return}await openCamera('user');say('전면 카메라 촬영 준비가 되었어요.')}catch(e){say(e?.name==='NotAllowedError'?'Safari 설정에서 이 사이트의 카메라 권한을 허용해 주세요.':'카메라를 열 수 없어요. Safari를 사용하고 카메라 권한을 확인해 주세요.')}};
 document.querySelector('#switchCamera').onclick=async()=>{const previous=cameraFacing,next=previous==='user'?'environment':'user';const button=document.querySelector('#switchCamera');button.disabled=true;try{await openCamera(next);say(next==='environment'?'후면 카메라로 전환했어요.':'전면 카메라로 전환했어요.')}catch{try{await openCamera(previous)}catch{}say('카메라를 전환하지 못했어요. 이 기기에서 사용할 수 있는 카메라인지 확인해 주세요.')}finally{update()}};
